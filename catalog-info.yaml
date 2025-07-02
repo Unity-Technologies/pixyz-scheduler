@@ -1,0 +1,22 @@
+# For more information about the available options please visit: http://go/catalog-info (VPN required)
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  annotations:
+    github.com/project-slug: Unity-Technologies/pixyz-scheduler
+    backstage.io/techdocs-ref: dir:.
+  name: pixyz-scheduler
+  description: "The pixyz-scheduler is a powerful toolkit designed for orchestrating and executing decentralized tasks across a network of specialized workers. Tailored for seamless integration with the (pixyz) framework, this toolkit empowers users to effortlessly submit jobs to distributed workers via an intuitive API."
+  labels:
+    costcenter: "7054"
+  tags:
+    - planned-public
+    - enterprise
+  links:
+    - url: https://unity.slack.com/messages/C031HKYE8MD/
+      title: "#devs-pixyz"
+      icon: chat
+spec:
+  type: service
+  lifecycle: production
+  owner: Unity-Technologies/pixyz-devops
