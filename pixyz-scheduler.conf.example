@@ -1,0 +1,212 @@
+##############################################################################
+## SERVICE CONFIGURATION
+## For standalone, multinode and docker multi-host
+##############################################################################
+
+#### REDIS CONFIGURATION
+## Redis IP address and port
+REDIS_MASTER_SERVICE_HOST="127.0.0.1"
+REDIS_MASTER_SERVICE_PORT="6379"
+
+## Redis password if enabled, otherwise leave an empty string
+REDIS_PASSWORD=""
+
+#### LICENSE CONFIGURATION
+## Configure the license server
+# Set to true if you want to use flexlm server licensing (mandatory with docker)
+LICENSE_FLEXLM=true
+
+# The name of the flexlm license server
+LICENSE_HOST=license.example.com
+
+# The tcp port of the flexlm license server
+LICENSE_PORT=27000
+
+# Before start a worker, reserve all tokens for the worker,
+# otherwise, you have to manage token by yourself
+LICENSE_ACQUIRE_AT_START=true
+
+#### API CONFIGURATION
+## The Pixyz API password
+# All the API requests must be authenticated with this hashed password and it should be set here
+# you **must** set a passowrd
+# How to create a hashed password:
+#
+# On linux, you can use the following command to generate the hashed password:
+#  echo -n "your_password" | sha256sum
+#
+# On windows, you can use the following command to generate the hashed password:
+#  $mystring = "your_password"
+#  $mystream = [IO.MemoryStream]::new([byte[]][char[]]$mystring)
+#  Get-FileHash -InputStream $mystream -Algorithm SHA256
+#
+# Default: secret
+GOD_PASSWORD_SHA256="2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b"
+
+## Listen port for API (listen to any interface by default)
+API_PORT=8001
+
+#### REDIS CONFIGURATION (optional)
+## The redis database defines a prefix where the queue and the result are stored
+# Database "0": the default queue database
+# Database "00": the default result database
+#
+# Example: If you use the database prefix "1" for the queue, the result will be stored in the database "10" database
+# 0 is the default value
+#
+# For multiple instance of the scheduler with the same redis database, you can use different database prefix but be
+# sure that you have change the `database` value in the `redis.conf` file
+REDIS_DATABASE="0"
+
+#### DEBUG MODE
+## Minimal running configuration
+# DEBUG/Verbose Mode
+# the DEBUG variable is used to enable:
+#  - the amount of logs
+#  - the default path for the shared (./share) and process scripts directory (./scripts/process)
+# inside the scheduler code
+DEBUG="false"
+
+
+##############################################################################
+## STANDALONE & (MULTINODE) CONFIGURATION
+#  In the standalone mode and the multinode mode, you have to define:
+#  - the shared volume (./share)
+#  - the shared process scripts (./scripts/process)
+##############################################################################
+
+
+#### DEBUG MODE
+## Minimal running configuration
+
+##############################################################################
+## DOCKER CONFIGURATION
+## For standalone(docker-compose), multinode(docker-compose) and docker multi-host
+##############################################################################
+
+#### DOCKER IMAGE CONFIGURATION
+## Pixyz Scheduler API Image, redis and worker image
+# TODO DMX: check if available
+DOCKER_REDIS_IMAGE="redis:latest"
+DOCKER_API_IMAGE="pixyzinc/pixyz-scheduler-api:latest"
+DOCKER_WORKER_IMAGE="pixyzinc/pixyz-scheduler-worker:latest"
+
+## Linux permission for the shared volume
+# The UID and GID are used to set the permission on the shared volume
+# Please set the UID and GID to the same value as the user that will use the shared volume
+# If you don't set the right permission the share directory will be read-only
+UID=1001
+GID=1001
+
+
+######################## Build configuration
+#PIXYZ_PYTHON_PATH="/opt/pixyz"
+
+# Configure the Pixyz version and the base image when you want rebuild the image locally
+PIXYZ_IMAGE_BASE="pixyzinc/sdk"
+PIXYZ_IMAGE_VERSION="2025.2.0.1"
+
+
+##############################################################################
+## WORKER CONFIGURATION
+## For all modes
+##############################################################################
+
+## DEBUG/Verbose Mode
+# the DEBUG variable is used to enable the debug mode, Don't enable it in production except for getting more log
+# Enable it if the pixyz support ask you to or if you want to develop
+# inside the scheduler code
+LOG_LEVEL=INFO
+
+
+## GENERAL WORKER MEMORY USAGE
+#
+#                   ** WORK ONLY IN DOCKER MODE **
+#
+# The maximum memory usage for the worker. If the worker exceeds this limit, it will be failed and retried on GPUHIGH
+# workers
+#  +--------------+                      +-----------------+
+#  |  CPU OR GPU  |   if out of memory   |   +GPUHIGH      |
+#  |    WORKER    | -------------------->|    WORKER       |
+#  +--------------+       retry on       +-----------------+
+#
+# The maximum memory usage for the cpu/gpu worker. If the worker exceeds this limit, it will be failed and retried
+# The value is in KB
+#
+# If you reach the memory limit, the job will be failed BUT never restarted because of the Out of memory killer
+# Set the value to an possible value on your host
+#
+# Example: 2GB = 2097152
+# Default: 0 (unlimited)
+# Note: this value only affects the CPU and GPU worker not the API, ...
+MAX_MEMORY_USAGE=0
+
+## (GPU HIGH) WORKER MEMORY USAGE
+# The maximum memory usage on the gpu high worker. If the worker exceeds this limit, the job will failed and never
+# retried
+# The value is in KB
+# Example: 2GB = 2097152
+# Default: 0 (unlimited)
+# Note: this value only affects the CPU and GPU worker not the API, ...
+MAX_MEMORY_USAGE_GPUHIGH=0
+
+## POOL TYPE
+# A worker can work in different mode: solo or pool
+#  - solo: the worker will work alone and it will be the only used for High Performance tasks (don't enable for Pixyz
+#        tasks! It will not WORK!)
+#  - pool: the worker will work in a pool with other workers tasks such cleaning, zipping, ...
+POOL_TYPE=solo
+
+## CONCURRENT TASKS
+# This parameter controls on how many tasks the worker can work concurrently in the pool mode
+# Default: Don't set it
+#CONCURRENT_TASKS=5
+
+## QUEUE NAME
+# The list of all queues that the worker can listen to and we will report metrics for each queue
+# Default: cpu,gpu,zip,clean,control,gpuhigh
+QUEUE_NAME=cpu,gpu,zip,clean,control,gpuhigh
+
+## The number of tasks before the worker restarts
+# If you set this value to non-zero, the worker will restart after the number of executed tasks
+# It should be used for the memory leak detection or else
+# Default: 0 (never)
+MAX_TASKS_BEFORE_SHUTDOWN=0
+
+## The number of time before the tasks are killed and going to the retry queue
+# This time limit is used for pixyz task in the internal process manager
+# (not the default celery manager that not works)
+PIXYZ_TIME_LIMIT=2400
+
+## The number of time before the tasks are killed and going to the failed state
+# This is the same time as above but for the retry queue.
+PIXYZ_RETRY_TIME_LIMIT=3600
+
+##############################################################################
+## CLEANUP CONFIGURATION
+## For all modes
+##############################################################################
+## Enable the cleanup roundtrip
+# The cleanup roundtrip is used to clean the worker files that come from the API and the worker itself
+CLEANUP_ENABLED="false"
+
+## The time to live for the worker files before they are cleaned
+CLEANUP_DELAY=3600
+
+
+##############################################################################
+## SHARE CONTENT CONFIGURATION
+## For dedicated mode only (not need from developer source, docker or kubernetes, ...)
+## Example: on bare metal, VM, ... without docker
+##############################################################################
+## The shared volume path
+# The shared volume is used to share the files between the API and the worker
+SHARE_PATH="/tmp/share"
+
+## The shared process scripts path
+# The shared process scripts is used to share the process scripts between the API and the worker
+# Default: <package_pixyz_api>/process
+# the default package contains process scripts sample, but if you want develop your own process scripts, you must
+# set a directory with pre-defined files.
+#PROCESS_PATH="/mydirectory/process"
+

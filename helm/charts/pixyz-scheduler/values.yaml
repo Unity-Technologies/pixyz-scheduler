@@ -1,0 +1,317 @@
+####################################
+## Extra configuration for node
+####################################
+cloudTemplateParameters:
+  azure:
+    ### Azure specific configuration
+    # gpu workload must be scheduled on GPU nodes with the "sku" label set to "gpu" and the "CriticalAddonsOnly" taint
+    gpuInstance:
+      spec: &azureGpuInstanceSpec
+        tolerations:
+          - key: "sku"
+            operator: "Equal"
+            value: "gpu"
+            effect: "NoSchedule"
+          - key: CriticalAddonsOnly
+            operator: Exists
+    # cpu workload must be scheduled on CPU nodes with the "sku" label set to "cpu" and the "CriticalAddonsOnly" taint
+    # you can execute CPU workload on spot instances by setting the "kubernetes.azure.com/scalesetpriority" label to "spot"
+    cpuSpotInstance:
+      spec: &azureCpuSpotInstanceSpec
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: "kubernetes.azure.com/scalesetpriority"
+                      operator: In
+                      values:
+                        - "spot"
+        # Add tolerations to allow scheduling on spot instances
+        tolerations:
+          - key: "worker"
+            operator: "Equal"
+            value: "cpu"
+            effect: "NoSchedule"
+          - key: "kubernetes.azure.com/scalesetpriority"
+            operator: "Equal"
+            value: "spot"
+            effect: "NoSchedule"
+####################################
+## PIXYZ Scheduler configuration
+####################################
+pixyz_scheduler:
+  flexlm:
+    # The FlexLM license server host
+    host: "flexlm.apps.svc.cluster.local"
+    # The FlexLM license server port
+    port: "27000"
+    # Allocate a slot at startup or per jobs
+    acquire_at_start: true
+  storage:
+    shared:
+      persistentVolumeClaim: ""
+    process:
+      persistentVolumeClaim: ""
+  workers:
+    default:
+      image:
+        repository: pixyzinc/pixyz-scheduler-worker
+        pullPolicy: IfNotPresent
+        # Overrides the image tag whose default is the chart appVersion.
+        tag: "latest"
+      metadata:
+        labels: {}
+        annotations: {}
+      spec:
+          # Default time
+          terminationGracePeriodSeconds: 2600
+      resources:
+        requests:
+          memory: "16Gi"
+          cpu: "2"
+        limits:
+          cpu: "15"
+          memory: "64Gi"
+      logLevel: "INFO"
+      # For pixyz developers support only
+      debug: false
+      # You can specify a maximum number of tasks to process before shutting down the worker and restarting it
+      # This is useful to avoid memory leaks and prevent the worker from running out of memory
+      maxTasksBeforeShutdown: 1000
+      # Default auto scaling configuration
+      # Please check the Keda documentation about this configuration https://keda.sh/docs/2.14/reference/scaledobject-spec/
+      #
+      autoScale:
+        # pollingInterval
+        # The interval to check each trigger source on every ScaledObject.
+        # By default, KEDA checks the trigger sources every 1 seconds.
+        # Example: In a queue scenario, KEDA will check the queue length every pollingInterval
+        # and scale the resource up or down accordingly.
+        pollingInterval: 1
+
+        # cooldownPeriod
+        # The period to wait after the last trigger reported active before scaling the resource back to 0, in seconds.
+        # By default, this is set to 300 seconds (5 minutes).
+        # Example: Wait 5 minutes after the last time KEDA checked the queue and it was empty.
+        # Note: This is dependent on pollingInterval.
+        cooldownPeriod: 1800
+
+        # initialCooldownPeriod
+        # The delay before the cooldownPeriod starts after the initial creation of the ScaledObject, in seconds.
+        # By default, this is set to 0, meaning the cooldownPeriod begins immediately upon creation.
+        # Example: If initialCooldownPeriod is set to 120 seconds, KEDA will wait 120 seconds after the ScaledObject is created
+        # before initiating the cooldown process. This ensures a buffer period where the resource won't be scaled down immediately
+        # after creation. Note: This setting is independent of pollingInterval.
+        #initialCooldownPeriod: 0
+
+        # idleReplicaCount
+        # 💡 NOTE: Due to limitations in the HPA controller, the only supported value for this property is 0.
+        # If you need at least one pod running, set minReplicaCount to 1 and omit idleReplicaCount.
+        # Example: If idleReplicaCount is set to 0, the target resource scales down to 0 replicas when there’s no activity on triggers.
+        # When activity occurs, KEDA immediately scales the resource to minReplicaCount and then scales further using HPA rules.
+        #idleReplicaCount: 0  # Optional. Default: ignored, must be less than minReplicaCount
+
+        # minReplicaCount
+        # The minimum number of replicas KEDA will scale the resource down to.
+        # By default, this is set to 0, allowing scaling to zero replicas.
+        # Example: Set minReplicaCount to 1 if you always need at least one pod running.
+        minReplicaCount: 0  # Optional. Default: 0
+
+        # maxReplicaCount
+        # The maximum number of replicas of the target resource.
+        # This setting is passed to the HPA definition that KEDA creates for the resource.
+        # Example: Set maxReplicaCount to 100 to allow scaling up to a maximum of 100 replicas.
+        maxReplicaCount: 10
+
+    ## Cleanup process configuration
+    # The queue clean is consumed by the cleanup worker
+    # This process is used to clean up the job data after a certain period of time
+    # It is highly recommended to enable this process in production to avoid accumulating job data
+    #
+    cleanup:
+      enabled: true
+      # The time to wait before deleting the job data
+      # 1d by default
+      ttl: 28800
+    workers:
+      # Specify the worker configuration for each queue
+      # CPU worker
+      cpu:
+        spec:
+          <<: *azureCpuSpotInstanceSpec
+        resources:
+          requests:
+            cpu: "2"
+            memory: "8Gi"
+          limits:
+            cpu: "15"
+            memory: "64Gi"
+        # PiXYZ Scheduler specific configuration
+        # A list of queues to listen to
+        queues:
+          - cpu
+        # Watch the CPU queue to consume tasks
+        autoScale:
+          listName: "cpu"
+          listLength: 5
+          maxReplicaCount: 35
+          minReplicaCount: 0
+        logLevel: "INFO"
+        maxTasksBeforeShutdown: 1000
+      # GPU worker
+      gpu:
+        spec:
+          <<: *azureGpuInstanceSpec
+        resources:
+          requests:
+            cpu: "2"
+            memory: "16Gi"
+          limits:
+            cpu: "15"
+            memory: "90Gi"
+        # PiXYZ Scheduler specific configuration
+        # A list of queues to listen to
+        queues:
+          - gpu
+        autoScale:
+          listName: "gpu"
+          listLength: 1
+          maxReplicaCount: 36
+          minReplicaCount: 0
+      # GPU high worker( ack as failback resource )
+      # If a task fails to be scheduled on the gpu/cpu worker, it will be scheduled on the gpuhigh worker
+      gpuhigh:
+        spec:
+          <<: *azureGpuInstanceSpec
+        resources:
+          requests:
+            cpu: "15"
+            memory: "90Gi"
+          limits:
+            cpu: "15"
+            memory: "100Gi"
+        # PiXYZ Scheduler specific configuration
+        queues:
+          - gpuhigh
+        autoScale:
+          listName: "gpu"
+          listLength: 1
+          maxReplicaCount: 1
+          minReplicaCount: 0
+      # The control worker run management tasks and control the other workers
+      # management tasks like:
+      # - cleaning up the job data (clean queue)
+      # - zipping the job data (zip queue)
+      # - running control tasks, wait for tasks (control queue)
+      control:
+        # This worker is used to control the other workers or for running management tasks
+        # You can disable any pixyz initialization by setting disablePixyz to true
+        disablePixyz: true
+        # On control node you can use multiple process per worker to limit the number of workers
+        concurrentTasks: 5
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "500Mi"
+          limits:
+            cpu: "15"
+            memory: "4Gi"
+        # A list of queues to listen to
+        queues:
+          - clean
+          - zip
+          - control
+        logLevel: "INFO"
+        # The maximum number of tasks to process before shutting down the worker and restarting it
+        # 0 by default for unlimited
+        maxTasksBeforeShutdown: 1000
+        autoScale:
+          listName: "control"
+          listLength: 4
+          maxReplicaCount: 10
+          minReplicaCount: 1
+
+####################################
+## Redis configuration
+#
+redis:
+  host: redis-master.apps.svc.cluster.local
+  port: "6379"
+  enableTLS: false
+  database: 1
+# Remove passwordSecret field to disable password authentication
+#  passwordSecret:
+#    name: redis
+#    key: redis-password
+
+api:
+  enabled: true
+  monitor: false
+  image:
+    repository: pixyzinc/pixyz-scheduler-api
+    pullPolicy: IfNotPresent
+    # Overrides the image tag whose default is the chart appVersion.
+    tag: "latest"
+  # Number of threads that can use the API at the same time
+  webConcurrency: 8
+  forwardedAllowIps: ""
+  # A sha256 hash of the password used to secure the API
+  passwordHash: ""
+  spec:
+  ingress:
+    # The name of the ingress class to use for this ingress
+    className: "nginx-private"
+
+    # TLS secret name for letsencrypt or other certificate management
+    tlsSecretName: "api-wildcard"
+
+    # Optional additional annotations for your ingress (like cert-manager annotations)
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt"
+      # Maximum body size for the API requests (You must include the size of the uploaded files)
+      nginx.ingress.kubernetes.io/proxy-body-size: 1024m
+      nginx.ingress.kubernetes.io/enable-cors: "true"
+      nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+      nginx.ingress.kubernetes.io/cors-allow-methods: "PUT, GET, POST, OPTIONS, DELETE"
+      nginx.ingress.kubernetes.io/cors-allow-headers: "Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,X-Api-Key,Access-Control-Allow-Origin"
+
+    # The name of the host
+    hosts:
+      - api.unity.dev
+      - "*.unity.dev"
+
+##
+# TASK monitoring configuration with flower
+# 1. You can manage and monitor your tasks with flower
+# 2. Flower pushes tasks metrics to the prometheus server
+monitoring:
+  metadata:
+    labels: {}
+    annotations: {}
+  flower:
+    enabled: true
+    monitor: false
+    # Remove workers from the dashboard after 30 minutes of inactivity
+    # This is useful to avoid having too many removed workers in the dashboard
+    purge_offline_workers: 1800
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 100m
+        memory: 64Mi
+    # Loging/password for flowerdashboard
+    basicAuth: "pixyz:secret"
+    ingress:
+      className: "nginx-private"
+      tlsSecretName: "api-wildcard"
+      annotations:
+        cert-manager.io/cluster-issuer: "letsencrypt"
+      hosts:
+        - flower-dev.unity.dev
+        - "*.unity.dev"
+
+    configuration:
+        # The list of VARIABLE environment from the flower package (we will add the prefix "FLOWER_" for each variable)

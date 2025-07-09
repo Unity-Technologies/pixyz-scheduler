@@ -1,0 +1,284 @@
+services:
+##############################################################################
+## SERVICE API
+## The HTTP API service for the Pixyz Scheduler
+##############################################################################
+  api:
+    image: ${DOCKER_API_IMAGE}
+    user: "${UID}:${GID}"
+    build:
+      context: .
+      dockerfile: pixyz_api/Dockerfile
+    ports:
+      - 8001:8001
+    expose:
+      - 8001
+    healthcheck:
+      test: curl --fail http://localhost:8001/docs || exit 1
+      interval: 60s
+      retries: 3
+      start_period: 20s
+      timeout: 10s
+    environment:
+      - REDIS_MASTER_SERVICE_HOST=redis
+      - UID=$UID
+      - GID=$GID
+      - PROCESS_PATH=/process
+    env_file:
+      - pixyz-scheduler.conf
+    volumes:
+      - share:/share
+      - share:/app/share
+      - ./pixyz_api/process:/process
+      - ./pixyz_api/process:/app/scripts/process
+    networks:
+      - pixyz
+    depends_on:
+      redis:
+        condition: service_healthy
+      change-vol-ownership:
+        condition: service_completed_successfully
+
+##############################################################################
+## REDIS SERVICE
+## Store the result and the queue service
+##############################################################################
+  redis:
+    image: ${DOCKER_REDIS_IMAGE}
+    command:
+      - /bin/sh
+      - -c
+      - redis-server --appendonly no --save "" --requirepass "$$REDIS_PASSWORD"
+    healthcheck:
+      test: redis-cli --raw incr ping
+      interval: 5s
+      retries: 3
+      start_period: 20s
+      timeout: 10s
+    ports:
+      - 6379:6379
+    expose:
+      - 6379
+    restart: always
+    networks:
+      - pixyz
+    env_file:
+      - pixyz-scheduler.conf
+
+##############################################################################
+## SERVICE MONITORING
+## By default: disabled (change the replicas to 1 to enable)
+## The monitoring service for the Pixyz Scheduler/celery engine
+##############################################################################
+  flower:
+    image: ${DOCKER_WORKER_IMAGE}
+    ports:
+      - 5555:5555
+    expose:
+      - 5555
+    entrypoint:
+      - "celery"
+      - "-A"
+      - "pixyz_worker:app"
+      - "flower"
+      - "--purge_offline_workers=1800"
+      - "-Q"
+      - "cpu,gpu,gpuhigh,control,clean,zip"
+    restart: no
+    networks:
+      - pixyz
+    environment:
+      - REDIS_MASTER_SERVICE_HOST=redis
+      - DISABLE_PIXYZ=true
+    deploy:
+      mode: replicated
+      # Keep 2 replicated, one for compute, one for control
+      replicas: 0
+    env_file:
+      - pixyz-scheduler.conf
+    depends_on:
+      - redis
+
+##############################################################################
+## Change ownership of the volume
+## When you start the service, the shared folder must be owned by the user
+## inside the container. This service will change the ownership of the shared
+##############################################################################
+  change-vol-ownership:
+      image: alpine:latest
+      environment:
+        - UID=$UID
+        - GID=$GID
+      user: "root"
+      group_add:
+        - '${GID}'
+      volumes:
+        - share:/tmp/change-ownership
+      command: chown -R ${UID}:${GID} /tmp/change-ownership
+
+##############################################################################
+## Control node
+## A node service for the Pixyz Scheduler
+## This control node is used to:
+## - clean old jobs on share directory
+## - zip the share directory
+## - tracking tasks jobs when you want to wait for asynchronous tasks
+#
+# Note: This node don't use any PiXYZ SDK license, but you can't execute any
+# Pixyz SDK command on this node.
+##############################################################################
+  control:
+    image: ${DOCKER_WORKER_IMAGE}
+    user: "${UID}:${GID}"
+    build:
+      context: .
+      dockerfile: pixyz_worker/Dockerfile
+      args:
+        - PIXYZ_IMAGE=${PIXYZ_IMAGE_BASE}:${PIXYZ_IMAGE_VERSION}
+    restart: always
+    networks:
+      - pixyz
+    environment:
+      - DISABLE_PIXYZ=true
+      - DEBUG=False
+      - TEST_URL=http://api:8001
+      - REDIS_MASTER_SERVICE_HOST=redis
+      - HOME=/tmp
+      - UID=${UID}
+      - GID=${GID}
+      # enable for GPU linux integration
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - NVIDIA_VISIBLE_DEVICES=all
+# #For Windows future usage only
+#      - MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA
+#      - LD_LIBRARY_PATH=/usr/lib/wsl/lib
+    deploy:
+      mode: replicated
+      # Keep 2 replicated, one for compute, one for control
+      replicas: 0
+
+# If you want to enable GPU
+#      resources:
+#        reservations:
+#          devices:
+#            - driver: nvidia
+#              count: 1
+#              capabilities: [ gpu ]
+
+    env_file:
+      - pixyz-scheduler.conf
+    volumes:
+      - share:/share
+      - share:/app/share
+      - ./pixyz_api/process:/process
+    depends_on:
+      redis:
+        condition: service_healthy
+      change-vol-ownership:
+        condition: service_completed_successfully
+
+##############################################################################
+## CPU/GPU WORKER
+## A worker service for the Pixyz Scheduler
+## If you want to create specific worker for CPU or GPU, you have to
+## set the variable QUEUE_NAME with the list of queue separated by comma
+##
+## If you need GPU configuration, please enable the module on docker
+## Note: you can't use GPU on Windows
+##############################################################################
+  worker:
+    image: ${DOCKER_WORKER_IMAGE}
+    user: "${UID}:${GID}"
+    build:
+      context: .
+      dockerfile: pixyz_worker/Dockerfile
+      args:
+        - PIXYZ_IMAGE=${PIXYZ_IMAGE_BASE}:${PIXYZ_IMAGE_VERSION}
+    restart: always
+    networks:
+      - pixyz
+    environment:
+      - DEBUG=False
+      - TEST_URL=http://api:8001
+      - REDIS_MASTER_SERVICE_HOST=redis
+      - HOME=/tmp
+      - UID=${UID}
+      - GID=${GID}
+      # enable for GPU linux integration
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - NVIDIA_VISIBLE_DEVICES=all
+# #For Windows future usage only
+#      - MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA
+#      - LD_LIBRARY_PATH=/usr/lib/wsl/lib
+    deploy:
+      mode: replicated
+      # Keep 2 replicated, one for compute, one for control
+      replicas: 1
+
+# If you want to enable GPU
+#      resources:
+#        reservations:
+#          devices:
+#            - driver: nvidia
+#              count: 1
+#              capabilities: [ gpu ]
+
+    env_file:
+      - pixyz-scheduler.conf
+    volumes:
+      - share:/share
+      - share:/app/share
+      - ./pixyz_api/process:/process
+    depends_on:
+      redis:
+        condition: service_healthy
+      change-vol-ownership:
+        condition: service_completed_successfully
+
+##############################################################################
+## FAIL BACK SERVICE CPU/GPU WORKER
+## A worker service for the Pixyz Scheduler (cpu only)
+## If you want to create specific worker for CPU or GPU, you have to
+## set the variable QUEUE_NAME with the list of queue separated by comma
+##############################################################################
+  gpuhigh:
+    image: ${DOCKER_WORKER_IMAGE}
+    user: "${UID}:${GID}"
+    build:
+      context: .
+      dockerfile: pixyz_worker/Dockerfile
+      args:
+        - PIXYZ_IMAGE=${PIXYZ_IMAGE_BASE}:${PIXYZ_IMAGE_VERSION}
+    restart: always
+    networks:
+      - pixyz
+    environment:
+      - DEBUG=False
+      - TEST_URL=http://api:8001
+      - REDIS_MASTER_SERVICE_HOST=redis
+      - UID=${UID}
+      - GID=${GID}
+      - QUEUE_NAME=gpuhigh
+      # enable for GPU linux integration
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - NVIDIA_VISIBLE_DEVICES=all
+    deploy:
+      mode: replicated
+      replicas: 0
+    env_file:
+      - pixyz-scheduler.conf
+    volumes:
+      - share:/share
+      - share:/app/share
+      - ./pixyz_api/process:/process
+    depends_on:
+      redis:
+        condition: service_healthy
+      change-vol-ownership:
+        condition: service_completed_successfully
+volumes:
+  share:
+  process:
+networks:
+  pixyz:
+

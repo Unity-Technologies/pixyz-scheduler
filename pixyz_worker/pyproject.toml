@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=60"]
+build-backend = "setuptools.build_meta"
+
+[metadata]
+long_description_content_type = "text/markdown"
+long_description = { file = "README.md"}
+
+[project]
+name = "pixyz_worker"
+version = "2025.2.0.1"
+description = "3D Data Preparation engine capable of automatically importing a wide variety of CAD and 3D file formats"
+license = {file = "LICENSE.md"}
+requires-python = ">= 3.10"
+keywords = ["Unity", "PiXYZ", "3D", "CAD", "DataPreparation" ]
+readme = {file = "README.md", content-type = "text/markdown"}
+dynamic = ["dependencies"]
+
+authors =  [
+  {name = "Devops teams", email = "dia-devops@unity3d.com" }
+]
+
+classifiers = [
+  # How mature is this project? Common values are
+  #   3 - Alpha
+  #   4 - Beta
+  #   5 - Production/Stable
+  "Development Status :: 3 - Beta",
+  "Intended Audience :: Developers",
+  "License :: Other/Proprietary License",
+  "Programming Language :: Python :: 3.10",
+]
+
+[project.urls]
+"Homepage" = "https://unity.com/products/pixyz"
+
+[tool.setuptools]
+## DMX: Hack for recursing into data files
+package-data = {"tutorial" = ["tutorial/*py"] }
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[project.scripts]
+pixyz_worker = "pixyz_worker:main"

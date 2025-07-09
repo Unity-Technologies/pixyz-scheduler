@@ -1,0 +1,2 @@
+=== Welcome to Pixyz Scheduler HELM template
+github: https://github.com/Unity-Technologies/pixyz-scheduler

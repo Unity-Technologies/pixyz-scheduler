@@ -1,0 +1,14 @@
+redis
+celery
+celery[redis]
+celery[tblib]
+tblib
+gevent
+eventlet
+flower
+azure-storage-blob
+python-multipart
+pytest
+coverage
+pytest-md-report
+python-dotenv
