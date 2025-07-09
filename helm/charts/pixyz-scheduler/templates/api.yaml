@@ -1,0 +1,165 @@
+{{- if $.Values.api.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-{{ include "helm.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: api-{{ include "helm.fullname" . }}
+      type: pixyzapi
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: api-{{ include "helm.fullname" . }}
+        type: pixyzapi
+    spec:
+      {{- $spec := $.Values.api.spec | default dict }}
+      {{- if $spec }}
+      # Custom spec from user
+      {{- $spec | toYaml | nindent 6}}
+      {{- end }}
+      containers:
+      - name: api-{{ include "helm.fullname" . }}
+        {{- $image := $.Values.api.image }}
+        image: {{ required "You must fill the api.image.repository field" $image.repository }}:{{ required "You must fill the api.image.tag field" $image.tag }}
+        imagePullPolicy: {{ required "You must fill the api.image.pullPolicy field" $image.pullPolicy }}
+        resources:
+          requests:
+          {{- $resources := $.Values.api.resources | default dict }}
+          {{- $requests := $resources.requests | default dict }}
+            memory: {{ default "128Mi" $requests.memory | quote }}
+            cpu: {{ default "50m" $requests.cpu | quote }}
+          {{- $limits := $resources.limits | default dict }}
+          limits:
+            memory: {{ default "1Gi" $limits.memory | quote }}
+            cpu: {{ default "1000m" $limits.cpu | quote }}
+        env:
+          - name: REDIS_MASTER_SERVICE_HOST
+            value: {{ required "redis.host is required." $.Values.redis.host | quote }}
+          - name: REDIS_MASTER_SERVICE_PORT
+            value: {{ required "redis.port is required." $.Values.redis.port | quote }}
+          - name: REDIS_PASSWORD
+          {{- if hasKey .Values.redis "passwordSecret" }}
+            valueFrom:
+              secretKeyRef:
+                name: {{ required "redis.passwordSecret.name is required." $.Values.redis.passwordSecret.name }}
+                key: {{ required "redis.passwordSecret.key is required." $.Values.redis.passwordSecret.key }}
+          {{- else }}
+            value: ""
+          {{- end }}
+          - name: REDIS_DATABASE
+            value:  {{ default "0" $.Values.redis.database | quote }}
+          - name: WEB_CONCURRENCY
+            value: {{ default "8" $.Values.api.webConcurrency | quote }}
+          - name: FORWARDED_ALLOW_IPS
+            value: {{ default "" $.Values.api.forwardedAllowIps | quote }}
+          - name: GOD_PASSWORD_SHA256
+            value: {{ required "Please define passwordHash for api access (sha256)" $.Values.api.passwordHash | quote }}
+          - name: CLEANUP_ENABLED
+            {{- if $.Values.pixyz_scheduler.workers.cleanup.enabled }}
+            value: "TRUE"
+            {{- else }}
+            value: "FALSE"
+            {{- end }}
+          - name: CLEANUP_DELAY
+            value: {{ $.Values.pixyz_scheduler.workers.cleanup.ttl | default "86400" | quote }}
+          - name: SHARE_PATH
+            value: "/share"
+          - name: PROCESS_PATH
+            value: "/process"
+        volumeMounts:
+          - name: shared
+            mountPath: "/share"
+          {{- if $.Values.pixyz_scheduler.storage.process }}
+          - name: process
+            mountPath: "/process"
+          {{- end }}
+      volumes:
+        - name: shared
+          persistentVolumeClaim:
+            claimName: {{ required "We need a shared storage" $.Values.pixyz_scheduler.storage.shared.persistentVolumeClaim }}
+        {{- if $.Values.pixyz_scheduler.storage.process }}
+        - name: process
+          persistentVolumeClaim:
+            claimName: {{ required "We need a process storage if you enable this option" $.Values.pixyz_scheduler.storage.process.persistentVolumeClaim }}
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-{{ include "helm.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: api-{{ include "helm.fullname" . }}
+spec:
+  selector:
+    app: api-{{ include "helm.fullname" . }}
+  type: ClusterIP
+  ports:
+    - name: web
+      port: 80
+      targetPort: 8001
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-{{ include "helm.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  {{- if hasKey $.Values.api.ingress "annotations" }}
+  annotations:
+    {{- range $key, $value := $.Values.api.ingress.annotations }}
+      {{ $key }}: {{ $value | quote }}
+    {{- end }}
+  {{- end }}
+  labels:
+    app: api-{{ include "helm.fullname" . }}
+spec:
+  {{- if $.Values.api.ingress.className }}
+  ingressClassName: {{ $.Values.api.ingress.className }}
+  {{- end }}
+  tls:
+    - hosts:
+{{- range $key, $value := $.Values.api.ingress.hosts }}
+       - {{ $value | quote }}
+{{- end }}
+      # keep the certificate fixed and wildcarded for speed up creation, avoid letencrypt ban for too many request, etc...
+      secretName: {{ $.Values.api.ingress.tlsSecretName }}
+  rules:
+    - host: {{ index $.Values.api.ingress.hosts 0 }}
+      http:
+        paths:
+          - pathType: Prefix
+            backend:
+              service:
+                name: "api-{{ include "helm.fullname" . }}"
+                port:
+                  number: 80
+            path: /
+{{- if $.Values.api.monitor }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: api-{{ include "helm.fullname" . }}
+  labels:
+    {{- $labels := $.Values.monitoring.metadata.labels | default dict }}
+    {{- if $labels }}
+    {{- $labels | toYaml | nindent 3}}
+    {{- end }}
+  annotations:
+    {{- $annotations := $.Values.monitoring.metadata.annotations | default dict }}
+    {{- if $annotations }}
+    {{- $annotations | toYaml | nindent 3}}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app: api-{{ include "helm.fullname" . }}
+  endpoints:
+  - port: web
+    interval: 30s
+{{- end }}
+{{- end -}}

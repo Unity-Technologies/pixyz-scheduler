@@ -1,0 +1,217 @@
+{{/* For each groups of workers create the associated */}}
+{{- range $name, $value := .Values.pixyz_scheduler.workers.workers }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-{{ $name }}-{{ include "helm.fullname" $ }}
+  namespace: {{ $.Release.Namespace }}
+  {{- $defaultMetadata := $.Values.pixyz_scheduler.workers.default.metadata | default dict }}
+  {{- $nestedMetadata := $value.metadata | default dict }}
+  {{- $metadata := merge $nestedMetadata $defaultMetadata }}
+  {{- if $metadata }}
+  {{- $metadata | toYaml | nindent 2}}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app: worker-{{ $name }}-{{ include "helm.fullname" $ }}
+      type: pixyz-worker-{{ $name }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: worker-{{ $name }}-{{ include "helm.fullname" $ }}
+        type: pixyz-worker-{{ $name }}
+    spec:
+      {{- $defaultSpec := $.Values.pixyz_scheduler.workers.default.spec | default dict }}
+      {{- $nestedSpec := $value.spec | default dict }}
+      {{- $spec := merge $nestedSpec $defaultSpec }}
+      {{- if $spec }}
+      {{- $spec | toYaml | nindent 6}}
+      {{- end }}
+      {{- $defaultDebug := $.Values.pixyz_scheduler.workers.default.debug | default false }}
+      {{- $nestedDebug := $value.debug | default false }}
+      {{- $debug := or $nestedDebug $defaultDebug }}
+      {{- if $value.debug | default $defaultDebug }}
+      securityContext:
+        runAsUser: 0
+      {{- end }}
+      containers:
+      - name: "pixyz-worker"
+        {{- $defaultImage := $.Values.pixyz_scheduler.workers.default.image | default dict }}
+        {{- $nestedImage := $value.image | default dict }}
+        {{- $image := merge $nestedImage $defaultImage }}
+        image: {{ $image.repository }}:{{ $image.tag }}
+        imagePullPolicy: {{ $image.pullPolicy }}
+        lifecycle:
+          preStop:
+            exec:
+              command: [ "/bin/sh", "-c", "/usr/bin/pkill -TERM -f -o worker.py" ]
+        {{- if $value.debug | default $defaultDebug }}
+        command:
+          - "/bin/bash"
+          - "-c"
+          - "apt-get update && apt-get install -y python3.10-dbg && ulimit -c unlimited && python3.10-dbg worker.py ; mkdir /share/CORE-`hostname` ; cp core* /share/CORE-`hostname`/"
+        {{- end }}
+        resources:
+          requests:
+          {{- $defaultResources := $.Values.pixyz_scheduler.workers.default.resources | default dict }}
+          {{- $nestedResources := $value.resources | default dict }}
+          {{- $defaultRequests := $defaultResources.requests | default dict }}
+          {{- $nestedRequests := $nestedResources.requests | default dict }}
+          {{- $requests := merge $nestedRequests $defaultRequests }}
+            {{- $memoryRequest := $requests.memory | default "4Gi" }}
+            memory: {{ default "4Gi" $requests.memory | quote }}
+            cpu: {{ default "1000m" $requests.cpu | quote }}
+            {{- $gpuRequest := index $requests "nvidia.com/gpu" }}
+            {{- if $gpuRequest }}
+            nvidia.com/gpu: {{ $gpuRequest | quote }}
+            {{- end }}
+          {{- $defaultLimits := $defaultResources.limits | default dict }}
+          {{- $nestedLimits := $nestedResources.limits | default dict }}
+          {{- $limits := merge $nestedLimits $defaultLimits }}
+          limits:
+            {{- $memoryLimit := $limits.memory | default "4Gi" }}
+            memory: {{ default "4Gi" $limits.memory | quote }}
+            cpu: {{ default "1000m" $limits.cpu | quote }}
+            {{- $gpuLimit := index $limits "nvidia.com/gpu" }}
+            {{- if $gpuLimit }}
+            nvidia.com/gpu: {{ $gpuLimit | quote }}
+            {{- end }}
+        env:
+          {{- $memoryRequestSize := (include "utils.sizeToKBytes" $memoryRequest) }}
+          {{- $memoryLimitSize := (include "utils.sizeToKBytes" $memoryLimit) }}
+          {{- $maxMemorySize := max $memoryRequestSize $memoryLimitSize }}
+          {{- /* Keep 1Gi or 10% of RAM for python process itself */ -}}
+          {{- $maxMemoryUsage90pct := (int (mulf 0.90 $maxMemorySize)) }}
+          {{- $maxMemoryUsage1G := (int (sub $maxMemorySize 1048576)) }}
+          {{- $maxMemoryUsage := max $maxMemoryUsage90pct $maxMemoryUsage1G }}
+          - name: MAX_MEMORY_USAGE
+            value: {{ $maxMemoryUsage | quote }}
+          - name: REDIS_MASTER_SERVICE_HOST
+            value: {{ required "redis.host is required." $.Values.redis.host | quote }}
+          - name: REDIS_MASTER_SERVICE_PORT
+            value: {{ required "redis.port is required." $.Values.redis.port | quote }}
+          - name: REDIS_PASSWORD
+            {{- if hasKey $.Values.redis "passwordSecret" }}
+            valueFrom:
+              secretKeyRef:
+                name: {{ required "redis.passwordSecret.name is required." $.Values.redis.passwordSecret.name }}
+                key: {{ required "redis.passwordSecret.key is required." $.Values.redis.passwordSecret.key }}
+            {{- else }}
+            value: ""
+            {{- end }}
+          - name: REDIS_DATABASE
+            value:  {{ default "0" $.Values.redis.database | quote }}
+          {{- $globalLogLevel := "INFO" }}
+          {{- if hasKey $.Values.pixyz_scheduler.workers.default "logLevel" }}
+            {{- $globalLogLevel = $.Values.pixyz_scheduler.workers.default.logLevel }}
+          {{- end }}
+          {{- $logLevel := $value.logLevel | default $globalLogLevel }}
+          - name: LOGLEVEL
+            value: {{ $logLevel | quote }}
+          - name: QUEUE_NAME
+            value: {{ (join "," ($value.queues | uniq)) | quote }}
+          - name: CLEANUP_ENABLED
+            {{- if $.Values.pixyz_scheduler.workers.cleanup.enabled }}
+            value: "TRUE"
+            {{- else }}
+            value: "FALSE"
+            {{- end }}
+          - name: CLEANUP_DELAY
+            value: {{ $.Values.pixyz_scheduler.workers.cleanup.ttl | default "86400" | quote }}
+          {{- $globalmaxTasksBeforeShutdown := $.Values.pixyz_scheduler.workers.default.maxTasksBeforeShutdown | default 0 }}
+          {{- $maxTasksBeforeShutdown := $value.maxTasksBeforeShutdown | default $globalmaxTasksBeforeShutdown }}
+          - name: MAX_TASKS_BEFORE_SHUTDOWN
+            value: {{ $maxTasksBeforeShutdown | default 0 | quote }}
+          {{- $disablePixyz := $value.disablePixyz | default false }}
+          {{- if $disablePixyz }}
+          - name: POOL_TYPE
+            value: "prefork"
+          - name: CONCURRENT_TASKS
+            value: "{{- $value.concurrentTasks | default 5 }}"
+          - name: SHARE_PATH
+            value: "/app/share"
+          - name: PROCESS_PATH
+            value: "/process"
+          - name: DISABLE_PIXYZ
+            value: "true"
+          {{- else }}
+          {{- end }}
+          {{- $flexLmLicense := $.Values.pixyz_scheduler.flexlm | default false }}
+          {{- if $flexLmLicense }}
+          - name: LICENSE_FLEXLM
+            value: "true"
+          - name: LICENSE_HOST
+            value: {{ required "You must set the flexlm host" $.Values.pixyz_scheduler.flexlm.host | quote }}
+          - name:  LICENSE_PORT
+            value: {{ required "You must set the flexlm port" $.Values.pixyz_scheduler.flexlm.port | quote }}
+          - name: LICENSE_ACQUIRE_AT_START
+            value: {{ $.Values.pixyz_scheduler.flexlm.acquire_at_start | default "true" | quote }}
+          {{- end}}
+        volumeMounts:
+        {{- $staticLicense := $.Values.pixyz_scheduler.license | default false }}
+        {{- if $staticLicense }}
+          - mountPath: "/usr/share/PiXYZComputeEngine/licenses/pixyz.lic"
+            subPath: pixyz.lic
+            name: license
+            readOnly: true
+        {{- end }}
+          - name: shared
+            mountPath: "/app/share"
+          - name: shared
+            mountPath: "/share"
+          {{- if $.Values.pixyz_scheduler.storage.process }}
+          - name: process
+            mountPath: "/process"
+          {{- end }}
+
+      volumes:
+        {{- $staticLicense := $.Values.pixyz_scheduler.license | default false }}
+        {{- if $staticLicense }}
+        - name: license
+          secret:
+            secretName: {{ $.Values.pixyz_scheduler.license.secretName }}
+            items:
+              - key: pixyz.lic
+                path: pixyz.lic
+        {{- end }}
+        - name: shared
+          persistentVolumeClaim:
+            claimName: {{ required "We need a shared storage" $.Values.pixyz_scheduler.storage.shared.persistentVolumeClaim }}
+        {{- if $.Values.pixyz_scheduler.storage.process }}
+        - name: process
+          persistentVolumeClaim:
+            claimName: {{ required "We need a process storage if you enable this option" $.Values.pixyz_scheduler.storage.process.persistentVolumeClaim }}
+        {{- end }}
+
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-{{ $name }}-{{ include "helm.fullname" $ }}
+  namespace: {{ $.Release.Namespace }}
+spec:
+  scaleTargetRef:
+    kind: Deployment
+    name: worker-{{ $name }}-{{ include "helm.fullname" $ }}
+  {{- $defaultAutoScale := $.Values.pixyz_scheduler.workers.default.autoScale | default dict }}
+  {{- $nestedAutoScale := $value.autoScale | default dict }}
+  {{- $autoScale := merge $nestedAutoScale $defaultAutoScale }}
+  pollingInterval: {{ $autoScale.pollingInterval }}
+  cooldownPeriod: {{ $autoScale.cooldownPeriod }}
+  maxReplicaCount: {{ required (printf "workers.%s.autoScale.maxReplicaCount is required." $name) $autoScale.maxReplicaCount }}
+  minReplicaCount: {{ required (printf "workers.%s.autoScale.minReplicaCount is required." $name) $autoScale.minReplicaCount }}
+  triggers:
+    - type: redis
+      metadata:
+        address: "{{ required "redis.host is required." $.Values.redis.host }}:{{ required "redis.port is required." $.Values.redis.port }}"
+        passwordFromEnv: REDIS_PASSWORD
+        databaseIndex: {{ default "0" $.Values.redis.database | quote }}
+        enableTLS: {{ default "0" $.Values.redis.enableTLS | quote }}
+        listName: {{ required (printf "workers.%s.autoScale.listName is required." $name) $autoScale.listName }}
+        listLength: {{ required (printf "workers.%s.autoScale.listLength is required." $name) $autoScale.listLength | quote }}
+
+---
+{{/* For each groups of workers create the associated */}}
+{{end}}

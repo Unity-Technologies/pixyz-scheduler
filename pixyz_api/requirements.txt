@@ -1,0 +1,13 @@
+python-multipart
+fastapi
+uvicorn
+httpx
+tblib
+prometheus-fastapi-instrumentator
+python-dotenv
+redis
+celery
+celery[redis]
+celery[tblib]
+tblib
+requests

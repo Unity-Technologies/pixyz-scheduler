@@ -1,0 +1,163 @@
+{{- if .Values.monitoring.flower.enabled -}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: flower-{{ include "helm.fullname" . }}-auth
+  namespace: {{ .Release.Namespace }}
+type: Opaque
+data:
+  flower-basic-auth: {{ .Values.monitoring.flower.basicAuth | b64enc | quote }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flower-{{ include "helm.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: flower-{{ include "helm.fullname" . }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: flower-{{ include "helm.fullname" . }}
+    spec:
+      {{- $spec := $.Values.monitoring.flower.spec | default dict }}
+      {{- if $spec }}
+      # Custom spec from user
+      {{- $spec | toYaml | nindent 6}}
+      {{- end }}
+      containers:
+      - name: flower-{{ include "helm.fullname" . }}
+        {{- $defaultImage := $.Values.pixyz_scheduler.workers.default.image | default dict }}
+        {{- $nestedImage := $.Values.monitoring.flower.image | default dict }}
+        {{- $image := merge $nestedImage $defaultImage }}
+        image: {{ $image.repository }}:{{ $image.tag }}
+        imagePullPolicy: {{ $image.pullPolicy }}
+        command:
+          - "celery"
+          - "-A"
+          - "pixyz_worker:app"
+          - "flower"
+          - "--purge_offline_workers={{ .Values.monitoring.flower.purge_offline_workers }}"
+          - "-Q"
+          {{- /* For each groups of workers create the associated */ -}}
+            {{- $listQueues := list }}
+            {{- /* For each workers queues */ -}}
+            {{- range $name, $value := .Values.pixyz_scheduler.workers.workers -}}
+              {{- /* For each queue in the worker queue list */ -}}
+                 {{- range $index, $item := $value.queues }}
+                   {{- $listQueues = append $listQueues $item }}
+                 {{- end }}
+            {{- end }}
+          - {{ (join "," ($listQueues | uniq)) | quote }}
+          {{- /*- {{ join "," .Values.pixyz_scheduler.queues | quote }}*/}}
+        resources:
+          requests:
+          {{- $resources := .Values.monitoring.flower.resources | default dict }}
+          {{- $requests := $resources.requests | default dict }}
+            memory: {{ default "64Mi" $requests.memory | quote }}
+            cpu: {{ default "128m" $requests.cpu | quote }}
+          {{- $limits := $resources.limits | default dict }}
+          limits:
+            memory: {{ default "1Gi" $limits.memory | quote }}
+            cpu: {{ default "1000m" $limits.cpu | quote }}
+        env:
+          - name: REDIS_MASTER_SERVICE_HOST
+            value: {{ required "redis.host is required." .Values.redis.host | quote }}
+          - name: REDIS_MASTER_SERVICE_PORT
+            value: {{ required "redis.port is required." .Values.redis.port | quote }}
+          - name: REDIS_PASSWORD
+          {{- if hasKey .Values.redis "passwordSecret" }}
+            valueFrom:
+              secretKeyRef:
+                name: {{ required "redis.passwordSecret.name is required." .Values.redis.passwordSecret.name }}
+                key: {{ required "redis.passwordSecret.key is required." .Values.redis.passwordSecret.key }}
+          {{- else }}
+            value: ""
+          {{- end }}
+          - name: REDIS_DATABASE
+            value:  {{ default "0" .Values.redis.database | quote }}
+          - name: FLOWER_BASIC_AUTH
+            valueFrom:
+              secretKeyRef:
+                name: flower-{{ include "helm.fullname" . }}-auth
+                key: flower-basic-auth
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flower-{{ include "helm.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: flower-{{ include "helm.fullname" . }}
+spec:
+  selector:
+    app: flower-{{ include "helm.fullname" . }}
+  type: ClusterIP
+  ports:
+    - name: web
+      port: 80
+      targetPort: 5555
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: flower-{{ include "helm.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  {{- if hasKey .Values.monitoring.flower.ingress "annotations" }}
+  annotations:
+    {{- range $key, $value := .Values.monitoring.flower.ingress.annotations }}
+      {{ $key }}: {{ $value | quote }}
+    {{- end }}
+  {{- end }}
+  labels:
+    app: flower-{{ include "helm.fullname" . }}
+spec:
+  {{- if .Values.monitoring.flower.ingress.className }}
+  ingressClassName: {{ .Values.monitoring.flower.ingress.className }}
+  {{- end }}
+  tls:
+    - hosts:
+{{- range $key, $value := .Values.monitoring.flower.ingress.hosts }}
+       - {{ $value | quote }}
+{{- end }}
+      # keep the certificate fixed and wildcarded for speed up creation, avoid letencrypt ban for too many request, etc...
+      secretName: {{ .Values.monitoring.flower.ingress.tlsSecretName }}
+  rules:
+    - host: {{ index .Values.monitoring.flower.ingress.hosts 0 }}
+      http:
+        paths:
+          - pathType: Prefix
+            backend:
+              service:
+                name: "flower-{{ include "helm.fullname" . }}"
+                port:
+                  number: 80
+            path: /
+{{- if $.Values.monitoring.flower.monitor }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: flower-{{ include "helm.fullname" . }}
+  labels:
+    {{- $labels := $.Values.monitoring.metadata.labels | default dict }}
+    {{- if $labels }}
+    {{- $labels | toYaml | nindent 2}}
+    {{- end }}
+  annotations:
+    {{- $annotations := $.Values.monitoring.metadata.annotations | default dict }}
+    {{- if $annotations }}
+    {{- $annotations | toYaml | nindent 2}}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app: flower-{{ include "helm.fullname" . }}
+  endpoints:
+  - port: web
+{{- end }}
+{{- end -}}
+
