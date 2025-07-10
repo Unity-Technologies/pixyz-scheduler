@@ -290,6 +290,11 @@ python ./client.py --url http://localhost:8001 download -j [job-uuid] -f output.
 
 **🎉 Congratulations!** You now have a working Pixyz SDK Scheduler setup. Ready to process some 3D files?
 
+# Security considerations
+- **The HTTP API does not implement a secure authentication** protocol like OAuth but uses a simple hash control to avoid direct exposure.
+- You **MUST NOT expose the API to the public internet** without access list control and/or implementing your own authentication mechanism.
+- Keep in mind, **anyone who has access to the API is able to execute any Python code!**
+
 # Contribution Policy
 
 Thank you for your interest in this project. This repository is maintained for distribution purposes, and all development is managed internally.
