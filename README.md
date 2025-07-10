@@ -290,3 +290,14 @@ python ./client.py --url http://localhost:8001 download -j [job-uuid] -f output.
 ---
 
 **🎉 Congratulations!** You now have a working Pixyz SDK Scheduler setup. Ready to process some 3D files?
+
+# Contribution Policy
+
+Thank you for your interest in this project. This repository is maintained for distribution purposes, and all development is managed internally.
+
+As such, we cannot accept or respond to any of the following on GitHub:
+* Pull Requests
+* Code Review Requests
+* Issues or bug reports
+
+Any submissions of this nature will be closed. If you require support or wish to provide feedback, please use our official support channels.
