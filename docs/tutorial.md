@@ -230,8 +230,9 @@ python ./client.py -u SERVERURL -k SECRETTOKEN download -j {JOBUUID} -f output.p
 ```
 
 # Download all files in a zip
+```bash
 python ./client.py -u SERVERURL -k SECRETTOKEN downloadall -j {JOBUUID} -o outputfiles.zip
-
+```
 
 ---
 
@@ -240,6 +241,7 @@ python ./client.py -u SERVERURL -k SECRETTOKEN downloadall -j {JOBUUID} -o outpu
 The PiXYZ Scheduler provides detailed tracebacks when a script fails, which makes it easier to debug issues in the code or input parameters.
 
 ### Example: Error Output
+```bash
 python ./client.py -u SERVERURL -k SECRETTOKEN exec -s scripts/tutorial/00convertafile.py -p '{"extension": 123}' -w
 
 
@@ -249,7 +251,7 @@ Traceback (most recent call last):
 File "00converta_file.py", line 10, in main
     extension = params.get('extension', 'pxz').lower()
 AttributeError: 'int' object has no attribute 'lower'
-
+```
 
 Errors are stored in the error field of the API response.
 
