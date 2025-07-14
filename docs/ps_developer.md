@@ -108,13 +108,12 @@ The python module `pixyz_worker.script` contains the SDK to interact with the Pi
 This a class designed to manage program contexts by manipulating a set of configuration arguments like the shared directory, the 3D file, the script control (local or remote), and the progress tracking.
 Take a look in the reference [ProgramContext](#programcontext) for more information.
 
-###
 
-## The `pixyz_execute` task
+### The `pixyz_execute` task
 The `pixyz_execute` task is a Celery task that executes Python scripts on the Pixyz Scheduler. It is designed to run on a remote host and is managed by the Pixyz Scheduler.
 It must be not called from a pixyz scheduler script except if you want to create a new task from a task.
 
-## The pixyz_schedule decorator
+### The `pixyz_schedule` decorator
 The `pixyz_schedule` decorator is used to define a task that can be executed by the Pixyz Scheduler. It is used to define the task's behavior, such as the timeout, the wait option, and the task name.
 
 
@@ -128,7 +127,7 @@ The `pixyz_schedule` decorator is used to define a task that can be executed by 
 
 # API Reference
 
-## ProgramContext
+## `ProgramContext`
 This class is designed to manage program contexts by manipulating a set of configuration arguments:
 * worker option (data, tmp directory, ...)
 * script control (local or remote)
@@ -136,11 +135,11 @@ This class is designed to manage program contexts by manipulating a set of confi
 
 A program context **is mandatory** for each script function. It is used to manage the script execution and to interact with the Pixyz Scheduler.
 
-:warning: Every information stored in the ProgramContext must be serializable.
+:warning: Every information stored in the `ProgramContext` must be serializable.
 
-### init
+### `init`
 
-Constructor that initializes a ProgramContext object with arguments passed as keywords.
+Constructor that initializes a `ProgramContext `object with arguments passed as keywords.
 
 #### Parameters
 
@@ -164,7 +163,7 @@ context = ProgramContext(datafile='/path/to/data', islocal=True)
 | `time_request` | `datetime.utcnow()`              | Request time. This value will be reported by the API and useful for benching from the API to tasks                                                                                                                                                                               |
 | `raw`          | False                            | No raw data useful for single task, raw data is used for celery chaining                                                                                                                                                                                                         |
 
-### update
+### `update`
 Updates the current object with the given parameters. This function is useful when:
 * you want to update the current context like the progress status
 * you want to create a new task that comes from the current one but with different parameters
@@ -193,7 +192,7 @@ def main(pc: ProgramContext, params: dict):
 - The updated ProgramContext object.
 
 
-### progress _function_
+### `progress` _function_
 | Function                | Description                                                                      | Parameters                |
 |-------------------------|----------------------------------------------------------------------------------|---------------------------|
 | `progress_start()`      | Start a progress task                                                            | _None_                    | 
@@ -244,20 +243,20 @@ It will be return something like this:
 ```
 
 ### clone
-Creates a new ProgramContext by cloning the existing one and applying any additional modifications if not defined.
+Creates a new `ProgramContext` by cloning the existing one and applying any additional modifications if not defined.
 This function is useful when you want to create a new task that comes from the current one but with different parameters.
 
 #### Parameters
 
-- **kwargs: Modifications or updates to apply to the clone.
+- `**kwargs`: Modifications or updates to apply to the clone.
 
 #### Returns
 
-- A new, updated ProgramContext object.
+- A new, updated `ProgramContext` object.
 
 
 
-### get_input_dir/get_output_dir
+### `get_input_dir` / `get_output_dir`
 
 Each job task has a shared directory where the input and output files are stored. This function returns the path to the shared directory or file.
 
@@ -265,7 +264,7 @@ Note: this directory is created by the scheduler and is unique for each task. Yo
 
 #### Parameters
 
-- filename (str, optional): Filename to generate an absolute path.
+- `filename` (str, optional): Filename to generate an absolute path.
 
 #### Returns
 
@@ -285,7 +284,7 @@ def main(pc: ProgramContext, params: dict):
   shared_file = pc.get_output_dir('myfile.txt')
 ```
 
-### get_input_file
+### `get_input_file`
 
 Returns the path to the data file. This function is useful when you need to access the input data file even if the file is extracted from a zip archive or directly uploaded
 
@@ -307,7 +306,7 @@ def main(pc: ProgramContext, params: dict):
 
 - ValueError: If no data file is present in the ProgramContext.
 
-### is_compute_only
+### `is_compute_only`
 
 Indicates whether the current configuration is in "compute only" mode. No shared directory has been created.
 
@@ -329,21 +328,21 @@ def main(pc: ProgramContext, params: dict):
 ```
 
 
-### is_local
+### `is_local`
 Indicates if the current context is configured for local execution `true` or a remote `false`.
 
 #### Returns
 
 - Boolean indicating the local status.
 
-### from_local
+### `from_local`
 Static method to create a ProgramContext for local execution.
 
 #### Parameters
 
-- script: Script to execute.
-- input_path (optional): Input data path.
-- output_dir (optional): Shared output directory.
+- `script`: Script to execute.
+- `input_path` (optional): Input data path.
+- `output_dir` (optional): Shared output directory.
 
 #### Returns
 
@@ -357,18 +356,18 @@ def main(pc: ProgramContext, params: dict):
     local_pc = ProgramContext.from_local(__file__, "/tmp/input", "/tmp/output")
 ``` 
 
-### AsyncResult
+### `AsyncResult`
 Returns an asynchronous result for the configured task. This class will be used to create a new task from a task or to get the result of a task.
 
 #### Parameters
 
-- id: Task identifier.
-- backend: Task backend.
-- task_name (optional): Task name (deprecated).
-- app: Application associated with the task.
-- parent: Parent of the task.
+- `id`: Task identifier.
+- `backend`: Task backend.
+- `task_name` (optional): Task name (deprecated).
+- `app`: Application associated with the task.
+- `parent`: Parent of the task.
 
-### allow_join_result
+### `allow_join_result`
 Allows joining the results of a task, depending on whether it is local or not (cf celery documentation).
 
 Warning: This function will block the current thread until the result is available.
@@ -377,12 +376,12 @@ Warning: This function will block the current thread until the result is availab
 
 - Function to join the results.
 
-### execute
+### `execute`
 Executes a task based on the context parameters, either locally or remotely.
 
 #### Parameters
 
-- params: Specific parameters for the task to execute.
+- `params`(JSON): Specific parameters for the task to execute.
 
 #### Returns
 

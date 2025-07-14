@@ -15,4 +15,4 @@ If you need redondancy and high availability, you can use a Redis cluster or a R
 - Keep one directory per worker type, in this case you can use a different `pixyz-scheduler.conf` configuration per worker type.
 
 ## Example of setup
-* ![multi host example](./img/multi_host.jpg)
+![multi host example](./img/multi_host.jpg)
