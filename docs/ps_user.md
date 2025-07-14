@@ -55,7 +55,7 @@
 | Flower monitoring must be started before Celery to catch all events
 
 ## How to submit jobs
-Firstly, you have to (test your installation)(./doc/test_install.md). After that, If everything is working, you can submit a job to the scheduler through the API.
+Firstly, you have to [test your installation](./test_install.md). After that, If everything is working, you can submit a job to the scheduler through the API.
 
 We provide a python client to interact with the API. You can find it in the `client.py` file.
 
@@ -67,7 +67,7 @@ We provide a python client to interact with the API. You can find it in the `cli
 ### Testing the worker
 #### Submit a simple job through the web interface
 You can test the worker by submitting a simple job through the web interface. You can use the `sleep` script to test the worker.
-![img.png](img/img.png)
+![img/swagger_put_job.png](img/swagger_put_job.png)
 1. Open your browser to http://127.0.0.1:8001 (8001 is the default `API_PORT`)
 2. Go to the `Jobs` tab (POST/Create a new job)
 3. Select:

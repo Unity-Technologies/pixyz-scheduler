@@ -14,7 +14,7 @@ Each worker operates independently to execute assigned tasks, with jobs routed t
 
 # Overview
 
-[![Unity Pixyz SDK Scheduler](docs/img/Scheduler_v22_fixed3.gif)
+[Unity Pixyz SDK Scheduler](docs/img/Scheduler_v22_fixed3.gif)
 
 
 
