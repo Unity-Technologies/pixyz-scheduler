@@ -22,6 +22,10 @@ Docker deployment provides:
 
 ## Quick Start
 
+### IMPORTANT NOTICE with docker-compose
+The `pixyz-scheduler.conf` file serves as the configuration for both the scheduler and Docker Compose. So, you **MUST** always pass `pixyz-scheduler.conf` as environement file for docker-compose.
+If you want to avoid it, you have to copy the pixyz-scheduler.conf file to `.env` 
+
 ### 1. Configuration
 
 Create a `pixyz-scheduler.conf` file from the example:
@@ -57,6 +61,7 @@ UID=1001
 GID=1001
 ```
 
+
 ### 2. Generate Password Hash
 
 Generate a SHA256 hash for your API password:
@@ -78,7 +83,7 @@ Get-FileHash -InputStream $mystream -Algorithm SHA256
 Start with the default configuration:
 
 ```bash
-docker-compose up
+docker-compose --env-file pixyz-scheduler.conf up
 ```
 
 This creates:
@@ -96,7 +101,7 @@ Scale workers based on your needs:
 
 ```bash
 # Scale to 3 CPU workers + 1 GPU worker + monitoring
-docker-compose up --scale worker=3 --scale gpuhigh=1 --scale flower=1 --scale control=1
+docker-compose --env-file pixyz-scheduler.conf up --scale worker=3 --scale gpuhigh=1 --scale flower=1 --scale control=1
 ```
 
 ### GPU Support
