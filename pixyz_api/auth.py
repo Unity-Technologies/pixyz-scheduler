@@ -17,7 +17,7 @@ god_hash = os.getenv('GOD_PASSWORD_SHA256', None)
 
 if god_hash is None:
     logger.warning("GOD_PASSWORD_SHA256 environment variable not found, using default and faulty password?")
-    god_hash = 'bcc3b7924af3dd6ae7207e35eac32bbaa114ad070f23750ba320b10684be51ff'
+    god_hash = "not_set"
 
 
 def validate_sha256(data, expected_hash):
